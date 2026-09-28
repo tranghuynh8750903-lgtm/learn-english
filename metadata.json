@@ -1,0 +1,6 @@
+{
+  "name": "EnglishHub AI — Luyện TOEIC 800+ & IELTS 8.0",
+  "description": "Cộng đồng viết tiếng Anh và trợ lý AI sửa lỗi ngữ pháp, từ vựng chuyên sâu, chấm điểm mục tiêu TOEIC 800+ & IELTS 8.0 kèm bài tập cá nhân hóa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

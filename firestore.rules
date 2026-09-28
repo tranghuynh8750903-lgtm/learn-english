@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'learningMode', 'targetScore', 'streakDays', 'xp', 'frequentMistakes', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 128 &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             data.learningMode in ['TOEIC', 'IELTS'] &&
+             data.targetScore is string && data.targetScore.size() < 60 &&
+             data.streakDays is number && data.streakDays >= 0 &&
+             data.xp is number && data.xp >= 0 &&
+             data.frequentMistakes is list && data.frequentMistakes.size() <= 50 &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['authorId', 'authorName', 'title', 'content', 'mode', 'aiScore', 'likesCount', 'likedBy', 'savedBy', 'commentsCount', 'createdAt']) &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 250 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 15000 &&
+             data.mode in ['TOEIC', 'IELTS'] &&
+             data.aiScore is string && data.aiScore.size() < 60 &&
+             data.likesCount is number && data.likesCount >= 0 &&
+             data.likedBy is list && data.likedBy.size() <= 1000 &&
+             data.savedBy is list && data.savedBy.size() <= 1000 &&
+             data.commentsCount is number && data.commentsCount >= 0 &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    function isValidComment(data) {
+      return data.keys().hasAll(['postId', 'authorId', 'authorName', 'content', 'createdAt']) &&
+             data.postId is string && data.postId.size() > 0 && data.postId.size() < 128 &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 3000 &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    function isValidPracticeAttempt(data) {
+      return data.keys().hasAll(['userId', 'mode', 'category', 'title', 'score', 'total', 'estimatedBandOrScore', 'createdAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.mode in ['TOEIC', 'IELTS'] &&
+             data.category is string && data.category.size() < 60 &&
+             data.title is string && data.title.size() < 200 &&
+             data.score is number && data.score >= 0 &&
+             data.total is number && data.total > 0 &&
+             data.estimatedBandOrScore is string && data.estimatedBandOrScore.size() < 60 &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['recipientId', 'actorName', 'type', 'message', 'read', 'createdAt']) &&
+             data.recipientId is string && data.recipientId.size() > 0 && data.recipientId.size() < 128 &&
+             data.actorName is string && data.actorName.size() < 100 &&
+             data.type in ['like', 'comment', 'ai_feedback', 'milestone'] &&
+             data.message is string && data.message.size() < 500 &&
+             data.read is bool &&
+             data.createdAt is string && data.createdAt.size() < 50;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.uid == resource.data.uid;
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidPost(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.authorId == request.auth.uid && isValidPost(request.resource.data)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'savedBy', 'commentsCount']) &&
+         request.resource.data.likesCount is number && request.resource.data.likesCount >= 0 &&
+         request.resource.data.commentsCount is number && request.resource.data.commentsCount >= 0 &&
+         request.resource.data.likedBy is list && request.resource.data.savedBy is list)
+      );
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidComment(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    match /practiceAttempts/{attemptId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidPracticeAttempt(request.resource.data);
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.recipientId == request.auth.uid &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) &&
+                    request.resource.data.read is bool;
+    }
+  }
+}

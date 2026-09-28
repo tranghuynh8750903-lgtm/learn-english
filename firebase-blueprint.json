@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public learner profile and study progress metrics",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "learningMode": { "type": "string", "enum": ["TOEIC", "IELTS"] },
+        "targetScore": { "type": "string" },
+        "streakDays": { "type": "number" },
+        "xp": { "type": "number" },
+        "frequentMistakes": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "displayName", "learningMode", "targetScore", "streakDays", "xp", "frequentMistakes", "createdAt"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "English writing post shared with the community and analyzed by AI",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "authorTarget": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "mode": { "type": "string", "enum": ["TOEIC", "IELTS"] },
+        "topicTag": { "type": "string" },
+        "aiScore": { "type": "string" },
+        "aiSummary": { "type": "string" },
+        "aiCorrectionsJson": { "type": "string" },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array", "items": { "type": "string" } },
+        "savedBy": { "type": "array", "items": { "type": "string" } },
+        "commentsCount": { "type": "number" },
+        "featured": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["authorId", "authorName", "title", "content", "mode", "aiScore", "likesCount", "likedBy", "savedBy", "commentsCount", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Community comment on an English post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "content": { "type": "string" },
+        "aiSuggestion": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["postId", "authorId", "authorName", "content", "createdAt"]
+    },
+    "PracticeAttempt": {
+      "title": "PracticeAttempt",
+      "description": "User practice test or personalized AI mistake drill result",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "mode": { "type": "string", "enum": ["TOEIC", "IELTS"] },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "score": { "type": "number" },
+        "total": { "type": "number" },
+        "estimatedBandOrScore": { "type": "string" },
+        "mistakesLogged": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "mode", "category", "title", "score", "total", "estimatedBandOrScore", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User activity or AI feedback notification",
+      "type": "object",
+      "properties": {
+        "recipientId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "actorAvatar": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "comment", "ai_feedback", "milestone"] },
+        "postTitle": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["recipientId", "actorName", "type", "message", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Learner profiles and progress"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Community English posts with AI feedback"
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments on community posts"
+    },
+    "/practiceAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/PracticeAttempt" },
+      "description": "Practice drill results for learners"
+    },
+    "/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Notifications for learners"
+    }
+  }
+}
