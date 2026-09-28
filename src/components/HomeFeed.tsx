@@ -23,7 +23,7 @@ import {
 interface HomeFeedProps {
   posts: Post[];
   commentsByPost: Record<string, CommentItem[]>;
-  currentUserId: string;
+  currentUserId: string | null;
   learningMode: LearningMode;
   isSavedView?: boolean;
   onToggleLike: (post: Post) => void;
@@ -37,7 +37,6 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
   posts,
   commentsByPost,
   currentUserId,
-  learningMode,
   isSavedView = false,
   onToggleLike,
   onToggleSave,
@@ -47,23 +46,18 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
 }) => {
   const [feedSubTab, setFeedSubTab] = useState<'latest' | 'featured' | 'community'>('latest');
   const [modeFilter, setModeFilter] = useState<'ALL' | LearningMode>('ALL');
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({
-    'seed-post-1': true,
-  });
-  const [expandedAiDiffs, setExpandedAiDiffs] = useState<Record<string, boolean>>({
-    'seed-post-1': true,
-    'seed-post-2': true,
-  });
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [expandedAiDiffs, setExpandedAiDiffs] = useState<Record<string, boolean>>({});
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [submittingCommentId, setSubmittingCommentId] = useState<string | null>(null);
 
   const displayedPosts = posts
     .filter((post) => {
       if (isSavedView) {
-        return post.savedBy.includes(currentUserId);
+        return currentUserId ? post.savedBy.includes(currentUserId) : false;
       }
       if (modeFilter !== 'ALL' && post.mode !== modeFilter) return false;
-      if (feedSubTab === 'featured') return Boolean(post.featured || post.likesCount >= 20);
+      if (feedSubTab === 'featured') return Boolean(post.featured || post.likesCount >= 5);
       return true;
     })
     .sort((a, b) => {
@@ -94,17 +88,17 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#6E6A63]">
             <span>{isSavedView ? '❤️ Saved Posts' : '🏠 EnglishHub Community'}</span>
             <span>•</span>
-            <span>Học từ bài viết & phân tích lỗi thực tế</span>
+            <span>Cộng đồng học tiếng Anh thực tế</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-[#18181B] mt-1">
             {isSavedView
-              ? 'Bài viết & Cấu trúc hay đã lưu'
-              : 'Cộng đồng luyện viết TOEIC 800+ & IELTS 8.0'}
+              ? 'Bài viết bạn đã lưu'
+              : 'Bảng tin Cộng đồng EnglishHub AI'}
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
             {isSavedView
               ? 'Ôn tập lại các bài viết, lỗi ngữ pháp (❌ → ✅) và từ vựng nâng cao bạn đã đánh dấu.'
-              : 'Mỗi bài đăng đều đi kèm phân tích lỗi ngữ pháp & từ vựng từ AI để cả cộng đồng cùng tiến bộ.'}
+              : 'Nơi người học chia sẻ bài viết tiếng Anh thật và cùng học hỏi từ phần sửa lỗi chi tiết của AI.'}
           </p>
         </div>
 
@@ -182,24 +176,40 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
         </div>
       )}
 
-      {/* Empty state if Saved is empty */}
+      {/* Empty state */}
       {displayedPosts.length === 0 ? (
-        <div className="bg-white border border-[#E6E1D6] rounded-xl p-10 text-center space-y-3">
-          <Bookmark className="w-8 h-8 text-[#6E6A63] mx-auto" />
+        <div className="bg-white border border-[#E6E1D6] rounded-xl p-10 text-center space-y-4">
+          {isSavedView ? (
+            <Bookmark className="w-8 h-8 text-[#6E6A63] mx-auto" />
+          ) : (
+            <PenTool className="w-8 h-8 text-[#6E6A63] mx-auto" />
+          )}
           <h3 className="text-lg font-bold text-[#18181B]">
-            {isSavedView ? 'Chưa có bài viết nào được lưu' : 'Chưa có bài viết trong mục này'}
+            {isSavedView
+              ? 'Chưa có bài viết nào được lưu'
+              : 'Chưa có bài viết nào được đăng'}
           </h3>
           <p className="text-sm text-[#57534E] max-w-md mx-auto">
             {isSavedView
-              ? 'Nhấn biểu tượng 🔖 Lưu bài viết trên bảng tin cộng đồng để lưu lại các bài phân tích ngữ pháp và từ vựng hữu ích.'
-              : 'Hãy là người đầu tiên chia sẻ bài viết tiếng Anh của bạn!'}
+              ? 'Nhấn biểu tượng 🔖 Lưu bài trên bảng tin cộng đồng để lưu lại các bài viết hữu ích.'
+              : 'Hệ thống chỉ hiển thị bài viết thật từ người dùng. Hãy vào mục ✍️ Write để viết bài tiếng Anh đầu tiên của bạn và chia sẻ lên cộng đồng!'}
           </p>
+          {!isSavedView && (
+            <button
+              type="button"
+              onClick={onNavigateWrite}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#18181B] hover:bg-[#27272A] text-white text-xs font-bold transition cursor-pointer"
+            >
+              <PenTool className="w-4 h-4" />
+              ✍️ Viết bài đầu tiên ngay
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-5">
           {displayedPosts.map((post) => {
-            const isLiked = post.likedBy.includes(currentUserId);
-            const isSaved = post.savedBy.includes(currentUserId);
+            const isLiked = currentUserId ? post.likedBy.includes(currentUserId) : false;
+            const isSaved = currentUserId ? post.savedBy.includes(currentUserId) : false;
             const postComments = commentsByPost[post.id] || [];
             const isCommentsOpen = Boolean(expandedComments[post.id]);
             const isAiOpen = expandedAiDiffs[post.id] ?? true;
@@ -221,12 +231,18 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
                 {/* Author & Target Metadata Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <img
-                      src={post.authorAvatar}
-                      alt={post.authorName}
-                      className="w-10 h-10 rounded-full object-cover border border-[#E6E1D6]"
-                      referrerPolicy="no-referrer"
-                    />
+                    {post.authorAvatar ? (
+                      <img
+                        src={post.authorAvatar}
+                        alt={post.authorName}
+                        className="w-10 h-10 rounded-full object-cover border border-[#E6E1D6]"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-[#18181B] text-white flex items-center justify-center font-bold text-sm">
+                        {post.authorName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-[#18181B]">
@@ -411,12 +427,18 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <img
-                                  src={c.authorAvatar}
-                                  alt={c.authorName}
-                                  className="w-5 h-5 rounded-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
+                                {c.authorAvatar ? (
+                                  <img
+                                    src={c.authorAvatar}
+                                    alt={c.authorName}
+                                    className="w-5 h-5 rounded-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="w-5 h-5 rounded-full bg-[#18181B] text-white flex items-center justify-center text-[10px] font-bold">
+                                    {c.authorName.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
                                 <span className="text-xs font-bold text-[#18181B]">
                                   {c.authorName}
                                 </span>
@@ -429,11 +451,6 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
                               </span>
                             </div>
                             <p className="text-xs md:text-sm text-[#18181B]">{c.content}</p>
-                            {c.aiSuggestion && (
-                              <p className="text-xs text-[#059669] font-medium pt-0.5">
-                                💡 {c.aiSuggestion}
-                              </p>
-                            )}
                           </div>
                         ))}
                       </div>
@@ -453,7 +470,7 @@ export const HomeFeed: React.FC<HomeFeedProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleCommentSubmit(post);
                         }}
-                        placeholder="Viết bình luận góp ý hoặc thảo luận bằng tiếng Anh / tiếng Việt..."
+                        placeholder="Viết bình luận của bạn..."
                         className="flex-1 px-3.5 py-2 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] text-xs md:text-sm text-[#18181B] focus:outline-none focus:border-[#18181B]"
                       />
                       <button

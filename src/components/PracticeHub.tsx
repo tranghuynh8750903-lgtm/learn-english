@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  BookOpen,
-  Headphones,
-  PenTool,
-  Mic,
   Sparkles,
   CheckCircle2,
   XCircle,
@@ -12,6 +8,7 @@ import {
   Brain,
   Trophy,
   RotateCcw,
+  AlertCircle,
 } from 'lucide-react';
 import {
   LearningMode,
@@ -23,6 +20,8 @@ import {
 import { PRACTICE_MODULES } from '../data/seedData';
 import {
   generateMistakeDrill,
+  generateSkillPracticeQuestions,
+  generateWritingOrSpeakingTopic,
   evaluateSpeakingOrWritingPractice,
 } from '../services/geminiService';
 
@@ -67,7 +66,12 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
   const categories = learningMode === 'TOEIC' ? TOEIC_CATEGORIES : IELTS_CATEGORIES;
   const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]);
   const [customAiModule, setCustomAiModule] = useState<PracticeModule | null>(null);
+  const [generatedQuestionsByCat, setGeneratedQuestionsByCat] = useState<
+    Record<string, PracticeQuestion[]>
+  >({});
   const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
+  const [isGeneratingSkillQuiz, setIsGeneratingSkillQuiz] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Quiz state
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
@@ -75,6 +79,9 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null);
 
   // Writing / Speaking interactive state
+  const [customTopicTitle, setCustomTopicTitle] = useState('');
+  const [cuePoints, setCuePoints] = useState<string[]>([]);
+  const [isGeneratingTopic, setIsGeneratingTopic] = useState(false);
   const [userResponseText, setUserResponseText] = useState('');
   const [isEvaluatingResponse, setIsEvaluatingResponse] = useState(false);
   const [responseEvaluation, setResponseEvaluation] = useState<{
@@ -96,14 +103,21 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
     setSubmittedQuiz(false);
     setResponseEvaluation(null);
     setUserResponseText('');
+    setErrorMsg(null);
   }, [learningMode]);
 
-  const activeModule: PracticeModule | undefined =
+  const baseModule: PracticeModule | undefined =
     selectedCategory === 'AI Mistake Drill' && customAiModule
       ? customAiModule
       : PRACTICE_MODULES.find(
           (m) => m.mode === learningMode && m.category === selectedCategory
         ) || PRACTICE_MODULES.find((m) => m.mode === learningMode);
+
+  const moduleKey = `${learningMode}-${selectedCategory}`;
+  const activeQuestions: PracticeQuestion[] =
+    selectedCategory === 'AI Mistake Drill'
+      ? customAiModule?.questions || []
+      : generatedQuestionsByCat[moduleKey] || [];
 
   const handleCategoryClick = (cat: string) => {
     setSelectedCategory(cat);
@@ -111,10 +125,38 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
     setSubmittedQuiz(false);
     setResponseEvaluation(null);
     setUserResponseText('');
+    setErrorMsg(null);
+  };
+
+  const handleGenerateSkillQuestions = async () => {
+    setIsGeneratingSkillQuiz(true);
+    setErrorMsg(null);
+    setSelectedAnswers({});
+    setSubmittedQuiz(false);
+    try {
+      const qs = await generateSkillPracticeQuestions(learningMode, selectedCategory);
+      setGeneratedQuestionsByCat((prev) => ({
+        ...prev,
+        [moduleKey]: qs,
+      }));
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Không thể tạo câu hỏi lúc này.'
+      );
+    } finally {
+      setIsGeneratingSkillQuiz(false);
+    }
   };
 
   const handleGenerateAiDrill = async () => {
+    if (frequentMistakes.length === 0) {
+      setErrorMsg(
+        'Bạn chưa có lỗi nào được ghi nhận. Hãy kiểm tra bài viết của bạn tại mục ✍️ Write trước để AI tổng hợp các lỗi thực tế của bạn!'
+      );
+      return;
+    }
     setIsGeneratingDrill(true);
+    setErrorMsg(null);
     setSelectedAnswers({});
     setSubmittedQuiz(false);
     try {
@@ -123,17 +165,42 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
         id: `ai-drill-${Date.now()}`,
         mode: learningMode,
         category: 'AI Mistake Drill',
-        title: `🧠 Bài Tập Khắc Phục Lỗi Cá Nhân Hóa (${learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+'})`,
+        title: `🧠 Bài Tập Khắc Phục Lỗi Cá Nhân Hóa (${
+          learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+'
+        })`,
         subtitle:
-          'Được AI biên soạn trực tiếp từ những lỗi ngữ pháp & từ vựng bạn thường mắc phải khi viết bài.',
-        targetBadge: learningMode === 'IELTS' ? 'Mục tiêu IELTS 8.0' : 'Mục tiêu TOEIC 800+',
+          'Được AI tạo trực tiếp từ những lỗi ngữ pháp & từ vựng bạn đã mắc phải.',
+        targetBadge:
+          learningMode === 'IELTS' ? 'Mục tiêu IELTS 8.0' : 'Mục tiêu TOEIC 800+',
         durationMinutes: 8,
         questions,
       };
       setCustomAiModule(newModule);
       setSelectedCategory('AI Mistake Drill');
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Không thể tạo bài tập lúc này.'
+      );
     } finally {
       setIsGeneratingDrill(false);
+    }
+  };
+
+  const handleGenerateTopic = async () => {
+    if (!baseModule) return;
+    setIsGeneratingTopic(true);
+    setErrorMsg(null);
+    try {
+      const skillType = baseModule.category === 'Speaking' ? 'Speaking' : 'Writing';
+      const res = await generateWritingOrSpeakingTopic(learningMode, skillType);
+      setCustomTopicTitle(res.promptTitle);
+      setCuePoints(res.sampleCuePoints);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Không thể tạo đề bài lúc này.'
+      );
+    } finally {
+      setIsGeneratingTopic(false);
     }
   };
 
@@ -154,12 +221,12 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
   };
 
   const handleSubmitQuiz = async () => {
-    if (!activeModule || activeModule.questions.length === 0) return;
+    if (!baseModule || activeQuestions.length === 0) return;
     setSubmittedQuiz(true);
     let correctCount = 0;
     const newMistakes: string[] = [];
 
-    activeModule.questions.forEach((q) => {
+    activeQuestions.forEach((q) => {
       if (selectedAnswers[q.id] === q.correctIndex) {
         correctCount++;
       } else {
@@ -167,7 +234,7 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
       }
     });
 
-    const ratio = correctCount / activeModule.questions.length;
+    const ratio = correctCount / activeQuestions.length;
     const estimated =
       learningMode === 'IELTS'
         ? ratio >= 0.85
@@ -183,22 +250,23 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
 
     await onCompleteAttempt({
       mode: learningMode,
-      category: activeModule.category,
-      title: activeModule.title,
+      category: baseModule.category,
+      title: baseModule.title,
       score: correctCount,
-      total: activeModule.questions.length,
+      total: activeQuestions.length,
       estimatedBandOrScore: estimated,
       mistakesLogged: newMistakes,
     });
   };
 
   const handleEvaluateWritingOrSpeaking = async () => {
-    if (!activeModule?.writingOrSpeakingPrompt || !userResponseText.trim()) return;
+    if (!baseModule?.writingOrSpeakingPrompt || !userResponseText.trim()) return;
     setIsEvaluatingResponse(true);
+    setErrorMsg(null);
     try {
-      const skillType = activeModule.category === 'Speaking' ? 'Speaking' : 'Writing';
+      const skillType = baseModule.category === 'Speaking' ? 'Speaking' : 'Writing';
       const result = await evaluateSpeakingOrWritingPractice(
-        activeModule.writingOrSpeakingPrompt.promptTitle,
+        customTopicTitle || 'Tự chọn',
         userResponseText,
         learningMode,
         skillType
@@ -206,13 +274,17 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
       setResponseEvaluation(result);
       await onCompleteAttempt({
         mode: learningMode,
-        category: activeModule.category,
-        title: activeModule.title,
+        category: baseModule.category,
+        title: baseModule.title,
         score: 1,
         total: 1,
         estimatedBandOrScore: result.score,
         mistakesLogged: result.keyFixes.map((f) => `${f.wrong} → ${f.right}`),
       });
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Không thể chấm bài lúc này.'
+      );
     } finally {
       setIsEvaluatingResponse(false);
     }
@@ -226,13 +298,13 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#6E6A63]">
             <span>📚 Practice Hub</span>
             <span>•</span>
-            <span>Luyện tập chuyên sâu theo mục tiêu</span>
+            <span>Luyện tập theo mục tiêu</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-[#18181B] mt-1">
             Chế độ luyện tập {learningMode === 'TOEIC' ? 'TOEIC 800+' : 'IELTS 8.0'}
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
-            Hệ thống bài tập chuẩn hóa kết hợp <strong>AI tạo bài luyện tập từ lỗi thường mắc</strong> của riêng bạn.
+            AI trực tiếp tạo câu hỏi luyện tập theo kỹ năng hoặc từ những lỗi thực tế của riêng bạn.
           </p>
         </div>
 
@@ -263,6 +335,13 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
         </div>
       </div>
 
+      {errorMsg && (
+        <div className="p-3.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] text-xs font-medium flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
       {/* Personalized AI Mistake Drill Banner */}
       <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1.5">
@@ -273,24 +352,30 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
             </span>
           </div>
           <p className="text-sm text-[#18181B] font-medium">
-            Các chủ điểm AI phát hiện bạn cần củng cố:{' '}
-            <span className="text-[#57534E] font-normal">
-              {frequentMistakes.length > 0
-                ? frequentMistakes.slice(0, 3).join(' • ')
-                : 'Danh từ số nhiều sau lượng từ (many/several) • Sự hòa hợp chủ ngữ - động từ'}
-            </span>
+            {frequentMistakes.length > 0 ? (
+              <>
+                Các lỗi thực tế của bạn:{' '}
+                <span className="text-[#57534E] font-normal">
+                  {frequentMistakes.slice(0, 4).join(' • ')}
+                </span>
+              </>
+            ) : (
+              <span className="text-[#57534E] font-normal">
+                Chưa có lỗi nào được ghi nhận. Khi bạn kiểm tra bài viết tại mục ✍️ Write hoặc làm bài tập, các lỗi sai của bạn sẽ tự động lưu tại đây.
+              </span>
+            )}
           </p>
         </div>
         <button
           type="button"
           onClick={handleGenerateAiDrill}
-          disabled={isGeneratingDrill}
+          disabled={isGeneratingDrill || frequentMistakes.length === 0}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#18181B] hover:bg-[#27272A] text-white text-xs font-bold whitespace-nowrap transition cursor-pointer disabled:opacity-50"
         >
           <Sparkles className="w-4 h-4 text-[#FBBF24]" />
           {isGeneratingDrill
             ? 'AI đang tạo câu hỏi từ lỗi của bạn...'
-            : 'Tạo bài luyện tập khắc phục lỗi ngay'}
+            : 'Tạo bài luyện tập khắc phục lỗi'}
         </button>
       </div>
 
@@ -328,63 +413,82 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
       </div>
 
       {/* Active Module Content */}
-      {activeModule && (
+      {baseModule && (
         <div className="bg-white border border-[#E6E1D6] rounded-xl p-6 space-y-6 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E6E1D6] pb-4">
             <div>
               <span className="font-mono-code text-xs font-bold px-2.5 py-1 rounded bg-[#F3EFEA] text-[#18181B]">
-                {activeModule.targetBadge} • {activeModule.category}
+                {baseModule.targetBadge} • {baseModule.category}
               </span>
-              <h2 className="text-xl font-bold text-[#18181B] mt-2">{activeModule.title}</h2>
-              <p className="text-sm text-[#57534E] mt-0.5">{activeModule.subtitle}</p>
+              <h2 className="text-xl font-bold text-[#18181B] mt-2">{baseModule.title}</h2>
+              <p className="text-sm text-[#57534E] mt-0.5">{baseModule.subtitle}</p>
             </div>
-            <div className="font-mono-code text-xs text-[#6E6A63] whitespace-nowrap">
-              ⏱ ~{activeModule.durationMinutes} phút
-            </div>
+            {!baseModule.writingOrSpeakingPrompt && selectedCategory !== 'AI Mistake Drill' && (
+              <button
+                type="button"
+                onClick={handleGenerateSkillQuestions}
+                disabled={isGeneratingSkillQuiz}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-xs font-bold transition cursor-pointer disabled:opacity-50 ${
+                  learningMode === 'IELTS'
+                    ? 'bg-[#5B3FD9] hover:bg-[#4C32B8]'
+                    : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                {isGeneratingSkillQuiz
+                  ? 'AI đang biên soạn câu hỏi...'
+                  : activeQuestions.length > 0
+                  ? 'Tạo bộ câu hỏi mới bằng AI'
+                  : `🤖 AI Tạo Đề Luyện ${baseModule.category}`}
+              </button>
+            )}
           </div>
 
           {/* CASE A: Interactive Writing or Speaking Module (IELTS Writing / Speaking) */}
-          {activeModule.writingOrSpeakingPrompt ? (
+          {baseModule.writingOrSpeakingPrompt ? (
             <div className="space-y-5">
-              <div className="p-4 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-[#5B3FD9]">
-                  Đề bài {activeModule.category} chuẩn IELTS 8.0
+              <div className="p-4 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#5B3FD9]">
+                    Đề bài {baseModule.category} chuẩn IELTS 8.0
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateTopic}
+                    disabled={isGeneratingTopic}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#D6D1C7] hover:bg-[#F3EFEA] text-xs font-bold text-[#18181B] transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#5B3FD9]" />
+                    {isGeneratingTopic ? 'Đang tạo đề bài...' : 'Nhờ AI tạo đề bài mới'}
+                  </button>
                 </div>
-                <p className="text-base font-semibold text-[#18181B] leading-relaxed">
-                  {activeModule.writingOrSpeakingPrompt.promptTitle}
-                </p>
-                <p className="text-xs text-[#57534E]">
-                  {activeModule.writingOrSpeakingPrompt.instructions}
-                </p>
-                <ul className="list-disc list-inside text-xs text-[#18181B] space-y-1 pt-1">
-                  {activeModule.writingOrSpeakingPrompt.sampleCuePoints.map((pt, i) => (
-                    <li key={i}>{pt}</li>
-                  ))}
-                </ul>
+
+                <input
+                  type="text"
+                  value={customTopicTitle}
+                  onChange={(e) => setCustomTopicTitle(e.target.value)}
+                  placeholder="Nhập đề bài bạn muốn luyện tập hoặc nhấn 'Nhờ AI tạo đề bài mới'..."
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-[#E6E1D6] bg-white text-sm font-semibold text-[#18181B] focus:outline-none focus:border-[#18181B]"
+                />
+
+                {cuePoints.length > 0 && (
+                  <ul className="list-disc list-inside text-xs text-[#57534E] space-y-1 pt-1">
+                    {cuePoints.map((pt, i) => (
+                      <li key={i}>{pt}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-[#6E6A63]">
-                    Bài làm {activeModule.category} của bạn
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setUserResponseText(
-                        activeModule.writingOrSpeakingPrompt?.modelAnswer || ''
-                      )
-                    }
-                    className="text-xs font-semibold text-[#5B3FD9] hover:underline cursor-pointer"
-                  >
-                    Điền thử câu trả lời mẫu để xem AI phân tích
-                  </button>
-                </div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63]">
+                  Bài làm {baseModule.category} của bạn
+                </label>
                 <textarea
                   rows={5}
                   value={userResponseText}
                   onChange={(e) => setUserResponseText(e.target.value)}
-                  placeholder="Nhập đoạn văn hoặc bản ghi câu trả lời Speaking của bạn tại đây..."
+                  placeholder="Nhập đoạn văn hoặc câu trả lời Speaking của bạn tại đây..."
                   className="w-full p-4 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] text-sm text-[#18181B] leading-relaxed focus:outline-none focus:border-[#18181B]"
                 />
               </div>
@@ -398,7 +502,7 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                 <Sparkles className="w-4 h-4" />
                 {isEvaluatingResponse
                   ? 'AI đang chấm điểm & sửa bài...'
-                  : `Chấm điểm ${activeModule.category} theo mục tiêu 8.0`}
+                  : `Chấm điểm ${baseModule.category} theo mục tiêu 8.0`}
               </button>
 
               {responseEvaluation && (
@@ -451,10 +555,32 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                 </div>
               )}
             </div>
+          ) : activeQuestions.length === 0 ? (
+            <div className="p-10 text-center space-y-4 bg-[#FAF8F5] rounded-xl border border-[#E6E1D6]">
+              <p className="text-sm text-[#57534E] max-w-md mx-auto">
+                Nhấn nút <strong>"🤖 AI Tạo Đề Luyện {baseModule.category}"</strong> ở góc trên để AI tạo bộ câu hỏi mới nhất sát mục tiêu{' '}
+                <strong>{learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+'}</strong>.
+              </p>
+              <button
+                type="button"
+                onClick={handleGenerateSkillQuestions}
+                disabled={isGeneratingSkillQuiz}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-xs font-bold transition cursor-pointer disabled:opacity-50 ${
+                  learningMode === 'IELTS'
+                    ? 'bg-[#5B3FD9] hover:bg-[#4C32B8]'
+                    : 'bg-[#1E40AF] hover:bg-[#1E3A8A]'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                {isGeneratingSkillQuiz
+                  ? 'AI đang tạo câu hỏi...'
+                  : `🤖 Bắt đầu tạo câu hỏi ${baseModule.category}`}
+              </button>
+            </div>
           ) : (
             /* CASE B: Multiple Choice & Pedagogical Explanation Questions */
             <div className="space-y-6">
-              {activeModule.questions.map((q, index) => {
+              {activeQuestions.map((q, index) => {
                 const chosen = selectedAnswers[q.id];
                 const isCorrect = chosen === q.correctIndex;
 
@@ -463,14 +589,12 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                     key={q.id}
                     className="p-5 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5] space-y-4"
                   >
-                    {/* Optional Reading Passage */}
                     {q.contextPassage && (
                       <div className="p-4 rounded-lg bg-white border border-[#E6E1D6] text-xs md:text-sm text-[#18181B] whitespace-pre-line leading-relaxed font-serif">
                         {q.contextPassage}
                       </div>
                     )}
 
-                    {/* Optional Listening Audio Player */}
                     {q.audioScript && (
                       <div className="p-3.5 rounded-lg bg-white border border-[#E6E1D6] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
@@ -485,18 +609,12 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                               : '▶ Phát Audio bài nghe'}
                           </button>
                           <span className="text-xs text-[#57534E]">
-                            Giọng đọc chuẩn tiếng Anh thương mại & học thuật
+                            Nghe hội thoại và chọn đáp án đúng
                           </span>
                         </div>
-                        {submittedQuiz && (
-                          <span className="text-xs font-semibold text-[#059669]">
-                            Đã mở Transcript bên dưới
-                          </span>
-                        )}
                       </div>
                     )}
 
-                    {/* Question Stem */}
                     <div className="flex items-start gap-3">
                       <span className="font-mono-code text-xs font-bold px-2 py-1 rounded bg-white border border-[#E6E1D6] text-[#18181B]">
                         Q{index + 1}
@@ -506,7 +624,6 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                       </p>
                     </div>
 
-                    {/* Options */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {q.options.map((opt, optIdx) => {
                         const isSelected = chosen === optIdx;
@@ -558,7 +675,6 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                       })}
                     </div>
 
-                    {/* Pedagogical Explanation Box after submission */}
                     {submittedQuiz && (
                       <div className="p-4 rounded-lg bg-white border border-[#E6E1D6] space-y-2 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -600,14 +716,13 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                 );
               })}
 
-              {/* Submit / Reset Controls */}
               <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
                 {!submittedQuiz ? (
                   <button
                     type="button"
                     onClick={handleSubmitQuiz}
                     disabled={
-                      Object.keys(selectedAnswers).length < activeModule.questions.length
+                      Object.keys(selectedAnswers).length < activeQuestions.length
                     }
                     className={`px-6 py-3 rounded-lg text-white text-sm font-bold transition cursor-pointer disabled:opacity-50 ${
                       learningMode === 'IELTS'
@@ -616,7 +731,7 @@ export const PracticeHub: React.FC<PracticeHubProps> = ({
                     }`}
                   >
                     Nộp bài & Xem AI giải thích chi tiết (
-                    {Object.keys(selectedAnswers).length}/{activeModule.questions.length})
+                    {Object.keys(selectedAnswers).length}/{activeQuestions.length})
                   </button>
                 ) : (
                   <div className="flex flex-wrap items-center justify-between w-full gap-4 p-4 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0]">

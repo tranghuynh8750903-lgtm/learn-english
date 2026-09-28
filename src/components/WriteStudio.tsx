@@ -1,23 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
-  CheckCircle2,
-  AlertCircle,
-  BookOpen,
-  Award,
   Send,
   Wand2,
   ArrowRight,
   RotateCcw,
-  FileText,
-  Layers,
+  AlertCircle,
 } from 'lucide-react';
 import { AIFeedbackResult, LearningMode } from '../types';
 import { analyzeEnglishWriting } from '../services/geminiService';
 
 interface WriteStudioProps {
   learningMode: LearningMode;
+  isAuthenticated: boolean;
   onModeChange: (mode: LearningMode) => void;
+  onRequestAuth: () => void;
   onPublishPost: (data: {
     title: string;
     content: string;
@@ -29,136 +26,34 @@ interface WriteStudioProps {
   initialDraft?: { title: string; content: string; topicTag: string } | null;
 }
 
-const SAMPLE_PROMPTS = [
-  {
-    label: 'Ví dụ kinh điển: "many reason"',
-    mode: 'IELTS' as LearningMode,
-    title: 'My Motivation for Learning English',
-    topicTag: 'Personal Essay',
-    content:
-      'I have many reason to learn English. First, it helps me communicating with international colleagues at work. Second, most scientific research papers is published in English, so reading them directly give me a huge advantage.',
-  },
-  {
-    label: 'Mẫu Email TOEIC 800+',
-    mode: 'TOEIC' as LearningMode,
-    title: 'Follow-up on Quarterly Supply Schedule',
-    topicTag: 'Business Email',
-    content:
-      'Dear Ms. Carter, I am writing to inform you about the delay of our shipment. Please find attached the revise schedule. We look forward to hear from you soon regarding the new delivery date.',
-  },
-  {
-    label: 'Mẫu IELTS Writing Task 2',
-    mode: 'IELTS' as LearningMode,
-    title: 'The Impact of Remote Work on Productivity',
-    topicTag: 'IELTS Task 2',
-    content:
-      'In recent years, working from home has become very popular in many countries. Despite it brings flexibility for employees, some managers argue that remote work reduces team cohesion and innovation.',
-  },
-];
-
 export const WriteStudio: React.FC<WriteStudioProps> = ({
   learningMode,
+  isAuthenticated,
   onModeChange,
+  onRequestAuth,
   onPublishPost,
   onRecordMistakes,
   initialDraft,
 }) => {
-  const [title, setTitle] = useState(
-    initialDraft?.title || 'My Motivation for Learning English'
-  );
+  const [title, setTitle] = useState(initialDraft?.title || '');
   const [topicTag, setTopicTag] = useState(initialDraft?.topicTag || 'General Writing');
-  const [content, setContent] = useState(
-    initialDraft?.content ||
-      'I have many reason to learn English. First, it helps me communicating with international colleagues at work. Second, most scientific research papers is published in English, so reading them directly give me a huge advantage.'
-  );
+  const [content, setContent] = useState(initialDraft?.content || '');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'grammar' | 'vocabulary' | 'rubric'>('all');
+  const [aiResult, setAiResult] = useState<AIFeedbackResult | null>(null);
 
-  // Pre-populate with the pedagogical analysis of the default sample so the user immediately sees the rich inspection studio
-  const [aiResult, setAiResult] = useState<AIFeedbackResult | null>({
-    overallScore: learningMode === 'IELTS' ? '6.5 / 9.0' : '775 / 990',
-    targetComparison:
-      learningMode === 'IELTS'
-        ? 'Cách mục tiêu IELTS 8.0: +1.5 band (Cần khắc phục lỗi danh từ số nhiều & chia động từ)'
-        : 'Cách mục tiêu TOEIC 800+: +25 điểm (Cần chính xác hóa dạng từ & danh từ đếm được)',
-    summaryFeedback:
-      'Bài viết có bố cục 2 luận điểm mạch lạc (First, Second). Tuy nhiên bạn mất điểm đáng tiếc ở 4 lỗi ngữ pháp nền tảng: danh từ đếm được sau "many", cấu trúc "help + O + V", và sự hòa hợp giữa chủ ngữ - động từ. Xem chi tiết từng lỗi bên dưới để hiểu rõ nguyên nhân và cách nâng cấp lên mức điểm mục tiêu.',
-    correctedFullText:
-      'I have many reasons to learn English. First, it helps me communicate with international colleagues at work. Second, most scientific research papers are published in English, so reading them directly gives me a huge advantage.',
-    upgradedVersion:
-      'There are numerous compelling reasons why I am committed to mastering English. Foremost, proficiency in the language enables seamless communication with international counterparts in the workplace. Furthermore, since the vast majority of peer-reviewed scientific literature is published in English, consulting these primary sources directly confers a distinct competitive advantage.',
-    criteriaScores:
-      learningMode === 'IELTS'
-        ? [
-            { name: 'Task Response', score: '7.0', commentVi: 'Luận điểm rõ ràng, có dẫn chứng thực tế cho việc học tiếng Anh.' },
-            { name: 'Coherence & Cohesion', score: '7.0', commentVi: 'Sử dụng từ nối First, Second, so hợp lý; có thể nâng cấp lên Foremost, Furthermore.' },
-            { name: 'Lexical Resource', score: '6.5', commentVi: 'Có cụm "scientific research papers" tốt, nhưng "many", "huge advantage" còn cơ bản.' },
-            { name: 'Grammatical Range & Accuracy', score: '5.5', commentVi: 'Mắc lỗi số nhiều sau "many" và chia động từ to-be / V-s.' },
-          ]
-        : [
-            { name: 'Grammar Accuracy', score: '730', commentVi: 'Cần sửa lỗi "many reason", "helps me communicating", "papers is".' },
-            { name: 'Workplace Vocabulary', score: '810', commentVi: 'Sử dụng tốt cụm "international colleagues at work".' },
-            { name: 'Clarity & Conciseness', score: '820', commentVi: 'Ý văn súc tích, dễ hiểu trong ngữ cảnh công việc.' },
-            { name: 'Tone & Register', score: '760', commentVi: 'Có thể nâng cấp sang văn phong chuyên nghiệp hơn.' },
-          ],
-    corrections: [
-      {
-        category: 'Grammar',
-        wrong: 'reason',
-        right: 'reasons',
-        originalSentence: 'I have many reason to learn English.',
-        correctSentence: 'I have many reasons to learn English.',
-        explanation: 'Sau many cần danh từ đếm được ở dạng số nhiều (plural countable noun).',
-      },
-      {
-        category: 'Grammar',
-        wrong: 'communicating',
-        right: 'communicate',
-        originalSentence: 'First, it helps me communicating with international colleagues at work.',
-        correctSentence: 'First, it helps me communicate with international colleagues at work.',
-        explanation: 'Cấu trúc chuẩn: "help + somebody + V (nguyên mẫu)" hoặc "to V", không dùng V-ing.',
-      },
-      {
-        category: 'Grammar',
-        wrong: 'papers is published',
-        right: 'papers are published',
-        originalSentence: 'Second, most scientific research papers is published in English...',
-        correctSentence: 'Second, most scientific research papers are published in English...',
-        explanation: 'Chủ ngữ "papers" là danh từ số nhiều nên động từ to-be phải chia là "are".',
-      },
-      {
-        category: 'Grammar',
-        wrong: 'reading them directly give',
-        right: 'reading them directly gives',
-        originalSentence: '...so reading them directly give me a huge advantage.',
-        correctSentence: '...so reading them directly gives me a huge advantage.',
-        explanation: 'Chủ ngữ bắt đầu bằng danh động từ (V-ing: "reading them directly") luôn chia động từ ở ngôi thứ 3 số ít ("gives").',
-      },
-    ],
-    vocabularyUpgrades: [
-      {
-        basicWord: 'many reasons',
-        advancedWord: 'numerous compelling reasons',
-        level: learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 850+',
-        meaningVi: 'nhiều lý do thuyết phục',
-        exampleSentence: 'There are numerous compelling reasons to master business English.',
-      },
-      {
-        basicWord: 'huge advantage',
-        advancedWord: 'distinct competitive edge',
-        level: learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 850+',
-        meaningVi: 'lợi thế cạnh tranh vượt trội',
-        exampleSentence: 'Bilingual professionals possess a distinct competitive edge in global markets.',
-      },
-    ],
-    detectedWeaknessTags: [
-      'Danh từ số nhiều sau lượng từ (many/several)',
-      'Cấu trúc động từ theo sau "help" (Verb Pattern)',
-      'Sự hòa hợp chủ ngữ - động từ (Subject-Verb Agreement)',
-    ],
-  });
+  useEffect(() => {
+    if (initialDraft) {
+      setTitle(initialDraft.title);
+      setContent(initialDraft.content);
+      setTopicTag(initialDraft.topicTag);
+      setAiResult(null);
+      setPublishSuccess(false);
+    }
+  }, [initialDraft]);
 
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
@@ -166,25 +61,41 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
     if (!content.trim()) return;
     setIsAnalyzing(true);
     setPublishSuccess(false);
+    setErrorMessage(null);
     try {
       const result = await analyzeEnglishWriting(content, title, learningMode, topicTag);
       setAiResult(result);
       if (result.detectedWeaknessTags?.length) {
         onRecordMistakes(result.detectedWeaknessTags);
       }
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Đã xảy ra lỗi khi phân tích bài viết.'
+      );
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const handlePublish = async () => {
-    if (!content.trim() || !title.trim()) return;
+    if (!isAuthenticated) {
+      onRequestAuth();
+      return;
+    }
+    if (!content.trim() || !title.trim()) {
+      setErrorMessage('Vui lòng nhập đầy đủ tiêu đề và nội dung bài viết trước khi đăng.');
+      return;
+    }
     setIsPublishing(true);
+    setErrorMessage(null);
     try {
       let currentAi = aiResult;
       if (!currentAi) {
         currentAi = await analyzeEnglishWriting(content, title, learningMode, topicTag);
         setAiResult(currentAi);
+        if (currentAi.detectedWeaknessTags?.length) {
+          onRecordMistakes(currentAi.detectedWeaknessTags);
+        }
       }
       await onPublishPost({
         title: title.trim(),
@@ -194,24 +105,22 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
         aiResult: currentAi,
       });
       setPublishSuccess(true);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Không thể đăng bài viết lúc này.'
+      );
     } finally {
       setIsPublishing(false);
     }
   };
 
-  const handleLoadSample = (sample: (typeof SAMPLE_PROMPTS)[0]) => {
-    setTitle(sample.title);
-    setTopicTag(sample.topicTag);
-    setContent(sample.content);
-    onModeChange(sample.mode);
-    setPublishSuccess(false);
-  };
-
   const filteredCorrections =
     aiResult?.corrections.filter((item) => {
       if (activeTab === 'all') return true;
-      if (activeTab === 'grammar') return item.category === 'Grammar' || item.category === 'Structure';
-      if (activeTab === 'vocabulary') return item.category === 'Vocabulary' || item.category === 'Collocation';
+      if (activeTab === 'grammar')
+        return item.category === 'Grammar' || item.category === 'Structure';
+      if (activeTab === 'vocabulary')
+        return item.category === 'Vocabulary' || item.category === 'Collocation';
       return true;
     }) || [];
 
@@ -228,27 +137,20 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-[#18181B] mt-1">
-            Viết bài & Sửa lỗi tiếng Anh chuyên sâu
+            Viết bài & Sửa lỗi tiếng Anh cùng AI
           </h1>
           <p className="text-sm text-[#57534E] mt-1">
-            AI không chỉ chấm điểm mà còn phân tích rõ <span className="font-semibold text-[#18181B]">vì sao câu văn sai</span>, cách sửa đúng và cách nâng cấp từ vựng đạt mục tiêu.
+            Nhập bài viết thực tế của bạn để AI chấm điểm theo mục tiêu và giải thích chi tiết từng lỗi ngữ pháp, từ vựng.
           </p>
         </div>
-
-        {/* Sample Loaders */}
-        <div className="flex flex-wrap items-center gap-2">
-          {SAMPLE_PROMPTS.map((sample, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleLoadSample(sample)}
-              className="text-xs px-3 py-1.5 rounded-md border border-[#D6D1C7] bg-white hover:bg-[#F3EFEA] text-[#18181B] font-medium transition cursor-pointer"
-            >
-              {sample.label}
-            </button>
-          ))}
-        </div>
       </div>
+
+      {errorMessage && (
+        <div className="p-3.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626] text-xs font-medium flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {/* Split-Pane Studio: Left Editor | Right AI Pedagogical Inspector */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -315,7 +217,7 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-[#6E6A63]">
-                Nội dung tiếng Anh
+                Nội dung tiếng Anh của bạn
               </label>
               <span className="font-mono-code text-xs text-[#6E6A63]">
                 {wordCount} words
@@ -325,7 +227,7 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
               rows={9}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="Ví dụ: I have many reason to learn English..."
+              placeholder="Nhập câu hoặc đoạn văn tiếng Anh bạn muốn kiểm tra (Ví dụ: I have many reason to learn English.)..."
               className="w-full p-4 rounded-lg border border-[#E6E1D6] bg-[#FAF8F5] text-[#18181B] text-base leading-relaxed focus:outline-none focus:border-[#18181B] transition resize-y"
             />
           </div>
@@ -354,11 +256,12 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                   setTitle('');
                   setAiResult(null);
                   setPublishSuccess(false);
+                  setErrorMessage(null);
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-[#E6E1D6] text-xs font-semibold text-[#57534E] hover:text-[#18181B] hover:bg-[#F3EFEA] transition cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                Làm mới
+                Xóa nội dung
               </button>
             </div>
 
@@ -374,8 +277,8 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
           </div>
 
           {publishSuccess && (
-            <div className="p-3 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-medium flex items-center justify-between">
-              <span>🎉 Đã đăng bài viết kèm phân tích AI lên bảng tin cộng đồng EnglishHub!</span>
+            <div className="p-3 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-medium">
+              🎉 Đã đăng bài viết của bạn lên bảng tin cộng đồng EnglishHub!
             </div>
           )}
         </div>
@@ -388,11 +291,26 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                 <Wand2 className="w-6 h-6" />
               </div>
               <h3 className="text-lg font-bold text-[#18181B]">
-                Sẵn sàng kiểm tra ngữ pháp & từ vựng
+                Chưa có dữ liệu phân tích
               </h3>
               <p className="text-sm text-[#57534E] max-w-md mx-auto">
-                Nhấn <strong>"🤖 AI Kiểm tra & Sửa bài"</strong> để xem chi tiết từng lỗi sai (❌ → ✅), câu viết lại chuẩn và giải thích tiếng Việt vì sao cần sửa.
+                Hãy nhập bài viết tiếng Anh của bạn ở khung bên trái và nhấn{' '}
+                <strong>"🤖 AI Kiểm tra & Sửa bài"</strong>. AI sẽ phân tích trực tiếp nội dung bạn viết:
               </p>
+              <div className="max-w-md mx-auto text-left p-3.5 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] text-xs space-y-1.5">
+                <div className="text-[#6E6A63] font-semibold">Định dạng phản hồi từ AI:</div>
+                <div>
+                  <strong>Grammar:</strong>{' '}
+                  <span className="font-mono-code text-[#DC2626] line-through">❌ reason</span> →{' '}
+                  <span className="font-mono-code text-[#059669] font-bold">reasons</span>
+                </div>
+                <div>
+                  <strong className="text-[#059669]">Correct:</strong> I have many reasons to learn English.
+                </div>
+                <div>
+                  <strong>Explanation:</strong> Sau many cần danh từ số nhiều.
+                </div>
+              </div>
             </div>
           ) : (
             <div className="bg-white border border-[#E6E1D6] rounded-xl overflow-hidden shadow-xs">
@@ -413,7 +331,7 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                 <div className="flex items-center gap-3">
                   <div className="px-4 py-2 rounded-lg bg-white border border-[#E6E1D6] text-right">
                     <div className="text-[11px] uppercase tracking-wider font-semibold text-[#6E6A63]">
-                      Điểm AI ước tính
+                      Điểm AI chấm
                     </div>
                     <div
                       className={`font-mono-code text-xl font-bold ${
@@ -448,7 +366,13 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                       : 'border-transparent text-[#6E6A63] hover:text-[#18181B]'
                   }`}
                 >
-                  Grammar ({aiResult.corrections.filter((c) => c.category === 'Grammar' || c.category === 'Structure').length})
+                  Grammar (
+                  {
+                    aiResult.corrections.filter(
+                      (c) => c.category === 'Grammar' || c.category === 'Structure'
+                    ).length
+                  }
+                  )
                 </button>
                 <button
                   type="button"
@@ -481,7 +405,7 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                   {aiResult.summaryFeedback}
                 </div>
 
-                {/* Pedagogical Line-by-Line Corrections (Exact format requested by user) */}
+                {/* Pedagogical Line-by-Line Corrections */}
                 {(activeTab === 'all' || activeTab === 'grammar') && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -493,40 +417,43 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                         onClick={() => setContent(aiResult.correctedFullText)}
                         className="text-xs font-semibold text-[#059669] hover:underline cursor-pointer"
                       >
-                        Áp dụng toàn bộ bản sửa vào khung viết →
+                        Áp dụng bản sửa vào khung viết →
                       </button>
                     </div>
 
-                    {filteredCorrections.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-lg border border-[#E6E1D6] bg-white space-y-2 shadow-2xs"
-                      >
-                        {/* Line 1: Grammar: ❌ reason → reasons */}
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="font-bold text-[#18181B]">{item.category}:</span>
-                          <span className="font-mono-code px-2 py-0.5 rounded bg-[#FEF2F2] text-[#DC2626] line-through font-medium">
-                            ❌ {item.wrong}
-                          </span>
-                          <ArrowRight className="w-3.5 h-3.5 text-[#6E6A63]" />
-                          <span className="font-mono-code px-2 py-0.5 rounded bg-[#ECFDF5] text-[#059669] font-semibold">
-                            {item.right}
-                          </span>
-                        </div>
-
-                        {/* Line 2: Correct: I have many reasons to learn English. */}
-                        <div className="text-sm text-[#18181B] bg-[#FAF8F5] px-3 py-2 rounded border-l-3 border-[#059669]">
-                          <span className="font-bold text-[#059669]">Correct: </span>
-                          <span className="font-medium">{item.correctSentence}</span>
-                        </div>
-
-                        {/* Line 3: Explanation: Sau many cần danh từ số nhiều. */}
-                        <div className="text-sm text-[#57534E] leading-relaxed">
-                          <span className="font-bold text-[#18181B]">Explanation: </span>
-                          {item.explanation}
-                        </div>
+                    {filteredCorrections.length === 0 ? (
+                      <div className="p-4 rounded-lg border border-[#E6E1D6] bg-[#ECFDF5] text-[#059669] text-xs font-semibold">
+                        Không phát hiện lỗi sai trong mục này.
                       </div>
-                    ))}
+                    ) : (
+                      filteredCorrections.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-lg border border-[#E6E1D6] bg-white space-y-2 shadow-2xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="font-bold text-[#18181B]">{item.category}:</span>
+                            <span className="font-mono-code px-2 py-0.5 rounded bg-[#FEF2F2] text-[#DC2626] line-through font-medium">
+                              ❌ {item.wrong}
+                            </span>
+                            <ArrowRight className="w-3.5 h-3.5 text-[#6E6A63]" />
+                            <span className="font-mono-code px-2 py-0.5 rounded bg-[#ECFDF5] text-[#059669] font-semibold">
+                              {item.right}
+                            </span>
+                          </div>
+
+                          <div className="text-sm text-[#18181B] bg-[#FAF8F5] px-3 py-2 rounded border-l-3 border-[#059669]">
+                            <span className="font-bold text-[#059669]">Correct: </span>
+                            <span className="font-medium">{item.correctSentence}</span>
+                          </div>
+
+                          <div className="text-sm text-[#57534E] leading-relaxed">
+                            <span className="font-bold text-[#18181B]">Explanation: </span>
+                            {item.explanation}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
 
@@ -588,7 +515,6 @@ export const WriteStudio: React.FC<WriteStudioProps> = ({
                       ))}
                     </div>
 
-                    {/* Full Upgraded Version */}
                     <div className="p-4 rounded-lg border border-[#D6D1C7] bg-[#FAF8F5] space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold uppercase tracking-wider text-[#5B3FD9]">
