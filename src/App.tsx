@@ -8,6 +8,8 @@ import {
   Home,
   PenTool,
   BookOpen,
+  Bot,
+  Gamepad2,
   Heart,
   Bell,
   User,
@@ -15,6 +17,8 @@ import {
   Brain,
   X,
   AlertCircle,
+  Target,
+  Edit3,
 } from 'lucide-react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import {
@@ -51,6 +55,8 @@ import {
 import { HomeFeed } from './components/HomeFeed';
 import { WriteStudio } from './components/WriteStudio';
 import { PracticeHub } from './components/PracticeHub';
+import { AIAssistant } from './components/AIAssistant';
+import { VocabGame } from './components/VocabGame';
 import { NotificationsView, ProfileView } from './components/ProfileAndProgress';
 
 export default function App() {
@@ -123,7 +129,7 @@ export default function App() {
     return () => unsubAuth();
   }, []);
 
-  // 2. Real-time Community Posts & Comments Listener (100% real Firestore data)
+  // 2. Real-time Community Posts & Comments Listener
   useEffect(() => {
     const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubPosts = onSnapshot(
@@ -166,7 +172,7 @@ export default function App() {
     };
   }, []);
 
-  // 3. Authenticated User's Practice Attempts & Notifications Listener
+  // 3. User's Practice Attempts & Notifications Listener
   useEffect(() => {
     if (!firebaseUser) return;
 
@@ -252,13 +258,13 @@ export default function App() {
 
   const handleModeChange = async (mode: LearningMode) => {
     setLearningMode(mode);
-    const targetScore = mode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+';
+    const targetScore =
+      profile?.targetScore || (mode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+');
     if (firebaseUser && profile) {
-      setProfile((prev) => (prev ? { ...prev, learningMode: mode, targetScore } : null));
+      setProfile((prev) => (prev ? { ...prev, learningMode: mode } : null));
       try {
         await updateDoc(doc(db, 'users', firebaseUser.uid), {
           learningMode: mode,
-          targetScore,
         });
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `users/${firebaseUser.uid}`);
@@ -271,6 +277,8 @@ export default function App() {
     if (updates.learningMode) {
       setLearningMode(updates.learningMode);
     }
+    const nextProfile = { ...profile, ...updates };
+    setProfile(nextProfile);
     try {
       await updateDoc(doc(db, 'users', firebaseUser.uid), updates);
     } catch (err) {
@@ -299,6 +307,18 @@ export default function App() {
     }
   };
 
+  const handleAwardXP = async (amount: number) => {
+    if (firebaseUser && profile) {
+      const nextXp = profile.xp + amount;
+      setProfile((prev) => (prev ? { ...prev, xp: nextXp } : null));
+      try {
+        await updateDoc(doc(db, 'users', firebaseUser.uid), { xp: nextXp });
+      } catch (err) {
+        console.warn('Error updating XP:', err);
+      }
+    }
+  };
+
   const handlePublishPost = async ({
     title,
     content,
@@ -321,7 +341,7 @@ export default function App() {
       authorId: firebaseUser.uid,
       authorName: profile.displayName,
       authorAvatar: profile.photoURL,
-      authorTarget: mode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+',
+      authorTarget: profile.targetScore || (mode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+'),
       title,
       content,
       mode,
@@ -485,6 +505,9 @@ export default function App() {
     ? profile.frequentMistakes
     : localMistakes;
 
+  const currentDisplayTarget =
+    profile?.targetScore || (learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+');
+
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
   const savedPostsCount = firebaseUser
     ? posts.filter((p) => p.savedBy.includes(firebaseUser.uid)).length
@@ -500,6 +523,8 @@ export default function App() {
     { id: 'home', label: 'Home', emoji: '🏠', icon: Home },
     { id: 'write', label: 'Write & AI Sửa Bài', emoji: '✍️', icon: PenTool },
     { id: 'practice', label: 'Practice', emoji: '📚', icon: BookOpen },
+    { id: 'assistant', label: 'Trợ lý AI (Gemini)', emoji: '🤖', icon: Bot },
+    { id: 'game', label: 'Game Từ vựng', emoji: '🎮', icon: Gamepad2 },
     { id: 'saved', label: 'Saved', emoji: '❤️', icon: Heart, badge: savedPostsCount },
     {
       id: 'notifications',
@@ -533,7 +558,7 @@ export default function App() {
                 Đăng nhập vào EnglishHub AI
               </h2>
               <p className="text-xs text-[#57534E] leading-relaxed">
-                Chọn đăng nhập bằng Google hoặc Facebook để đăng bài, bình luận, lưu bài viết và đồng bộ tiến độ học tập.
+                Đăng nhập bằng Google hoặc Facebook để đăng bài, lưu bài viết và thiết lập mục tiêu cá nhân.
               </p>
             </div>
 
@@ -586,9 +611,9 @@ export default function App() {
         </div>
       )}
 
-      {/* LEFT SIDEBAR NAVIGATION (EnglishHub AI Tree) */}
-      <aside className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-[#E6E1D6] bg-[#FAF8F5] md:sticky md:top-0 md:h-screen flex flex-col justify-between p-4 md:p-5 shrink-0">
-        <div className="space-y-6">
+      {/* LEFT SIDEBAR NAVIGATION */}
+      <aside className="w-full md:w-64 lg:w-72 border-b md:border-b-0 md:border-r border-[#E6E1D6] bg-[#FAF8F5] md:sticky md:top-0 md:h-screen flex flex-col justify-between p-4 md:p-5 shrink-0 overflow-y-auto">
+        <div className="space-y-5">
           {/* Brand Header */}
           <div className="flex items-center justify-between">
             <div
@@ -609,19 +634,32 @@ export default function App() {
             </div>
           </div>
 
-          {/* Global Learning Mode Switcher (TOEIC 800+ vs IELTS 8.0) */}
-          <div className="p-3 rounded-xl bg-[#F3EFEA] border border-[#E6E1D6] space-y-2">
+          {/* Goal & Mode Display Card (User Customizable) */}
+          <div className="p-3.5 rounded-xl bg-[#F3EFEA] border border-[#E6E1D6] space-y-2">
             <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[#57534E]">
-              <span>🎯 Chế độ học</span>
-              <span
-                className={`font-mono-code ${
-                  learningMode === 'IELTS' ? 'text-[#5B3FD9]' : 'text-[#1E40AF]'
-                }`}
-              >
-                {learningMode === 'IELTS' ? 'IELTS 8.0' : 'TOEIC 800+'}
+              <span className="flex items-center gap-1">
+                <Target className="w-3.5 h-3.5 text-[#5B3FD9]" />
+                Mục tiêu của bạn
               </span>
+              <button
+                type="button"
+                onClick={() => setActiveNav('profile')}
+                className="text-[10px] text-[#5B3FD9] hover:underline flex items-center gap-0.5"
+                title="Tự chỉnh sửa mục tiêu học tập"
+              >
+                <span>Sửa</span>
+                <Edit3 className="w-2.5 h-2.5" />
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
+
+            <div
+              onClick={() => setActiveNav('profile')}
+              className="font-bold text-sm text-[#18181B] hover:text-[#5B3FD9] transition cursor-pointer"
+            >
+              {currentDisplayTarget}
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 pt-1">
               <button
                 type="button"
                 onClick={() => handleModeChange('TOEIC')}
@@ -681,46 +719,10 @@ export default function App() {
               );
             })}
           </nav>
-
-          {/* Architecture Sub-tree Quick Links on Desktop */}
-          <div className="hidden md:block pt-3 border-t border-[#E6E1D6] space-y-2 text-xs text-[#57534E]">
-            <div className="font-bold uppercase tracking-wider text-[11px] text-[#6E6A63]">
-              Lộ trình {learningMode === 'TOEIC' ? 'TOEIC 800+' : 'IELTS 8.0'}
-            </div>
-            {learningMode === 'TOEIC' ? (
-              <div className="grid grid-cols-2 gap-1.5">
-                {['Vocabulary', 'Grammar', 'Reading', 'Listening', 'Mini test'].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setActiveNav('practice')}
-                    className="text-left px-2.5 py-1.5 rounded bg-white border border-[#E6E1D6] hover:border-[#1E40AF] font-medium text-[#18181B] transition cursor-pointer"
-                  >
-                    • {s}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                {['Listening', 'Reading', 'Writing', 'Speaking', 'Vocabulary', 'Grammar'].map(
-                  (s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setActiveNav('practice')}
-                      className="text-left px-2.5 py-1.5 rounded bg-white border border-[#E6E1D6] hover:border-[#5B3FD9] font-medium text-[#18181B] transition cursor-pointer"
-                    >
-                      • {s}
-                    </button>
-                  )
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Bottom Auth / User Section (Google & Facebook) */}
-        <div className="hidden md:flex flex-col gap-2 pt-4 border-t border-[#E6E1D6]">
+        {/* Bottom Auth / User Section */}
+        <div className="hidden md:flex flex-col gap-2 pt-4 border-t border-[#E6E1D6] mt-4">
           {firebaseUser && profile ? (
             <div
               onClick={() => setActiveNav('profile')}
@@ -757,24 +759,6 @@ export default function App() {
                 onClick={handleSignInGoogle}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white border border-[#D6D1C7] hover:bg-[#F3EFEA] text-xs font-bold text-[#18181B] transition cursor-pointer"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
                 <span>Đăng nhập Google</span>
               </button>
               <button
@@ -782,9 +766,6 @@ export default function App() {
                 onClick={handleSignInFacebook}
                 className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[#1877F2] hover:bg-[#166FE5] text-xs font-bold text-white transition cursor-pointer"
               >
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
                 <span>Đăng nhập Facebook</span>
               </button>
             </div>
@@ -815,6 +796,27 @@ export default function App() {
           />
         )}
 
+        {activeNav === 'assistant' && (
+          <AIAssistant
+            learningMode={learningMode}
+            targetScore={currentDisplayTarget}
+            onModeChange={handleModeChange}
+            onNavigateWrite={(draft) => {
+              if (draft) setWriteStudioDraft(draft);
+              setActiveNav('write');
+            }}
+          />
+        )}
+
+        {activeNav === 'game' && (
+          <VocabGame
+            learningMode={learningMode}
+            targetScore={currentDisplayTarget}
+            onModeChange={handleModeChange}
+            onAwardXP={handleAwardXP}
+          />
+        )}
+
         {(activeNav === 'home' || activeNav === 'saved') && (
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             <div className="xl:col-span-8">
@@ -840,81 +842,55 @@ export default function App() {
 
             {/* RIGHT SIDEBAR RAIL */}
             <div className="xl:col-span-4 space-y-5 xl:sticky xl:top-8">
-              {/* Quick Auth Card if not signed in */}
-              {!firebaseUser && (
-                <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 shadow-2xs space-y-3">
-                  <h3 className="text-sm font-bold text-[#18181B]">
-                    👤 Đăng nhập Cộng đồng EnglishHub
-                  </h3>
-                  <p className="text-xs text-[#57534E] leading-relaxed">
-                    Đăng nhập bằng Google hoặc Facebook để đăng bài viết của bạn và lưu tiến độ học tập.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSignInGoogle}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-[#D6D1C7] bg-white hover:bg-[#FAF8F5] text-xs font-bold text-[#18181B] transition cursor-pointer"
-                    >
-                      <span>Google</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSignInFacebook}
-                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-[#1877F2] hover:bg-[#166FE5] text-xs font-bold text-white transition cursor-pointer"
-                    >
-                      <span>Facebook</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Pedagogical Format Guide Card */}
-              <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 shadow-2xs space-y-3.5">
+              {/* Quick AI Tutor Banner */}
+              <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#5B3FD9]">
-                    🤖 Cách AI Sửa Bài & Giải Thích
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#5B3FD9] flex items-center gap-1.5">
+                    <Bot className="w-4 h-4" />
+                    Trợ lý AI 24/7 (Gemini)
                   </span>
                   <span className="font-mono-code text-[11px] px-2 py-0.5 rounded bg-[#F3EFEA] font-semibold">
-                    Minh họa quy tắc
+                    Flash 3.8
                   </span>
                 </div>
-
-                <div className="p-3 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] space-y-1">
-                  <div className="text-[11px] font-semibold text-[#6E6A63]">Ví dụ câu đầu vào:</div>
-                  <div className="text-sm font-medium text-[#18181B]">
-                    "I have many reason to learn English."
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-lg border border-[#E6E1D6] bg-white space-y-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-[#18181B]">Grammar:</span>
-                    <span className="font-mono-code px-1.5 py-0.5 rounded bg-[#FEF2F2] text-[#DC2626] line-through">
-                      ❌ reason
-                    </span>
-                    <ArrowRight className="w-3 h-3 text-[#6E6A63]" />
-                    <span className="font-mono-code px-1.5 py-0.5 rounded bg-[#ECFDF5] text-[#059669] font-bold">
-                      reasons
-                    </span>
-                  </div>
-                  <div className="p-2 rounded bg-[#FAF8F5] border-l-3 border-[#059669] text-[#18181B]">
-                    <strong className="text-[#059669]">Correct:</strong> I have many reasons to learn English.
-                  </div>
-                  <div className="text-[#57534E]">
-                    <strong className="text-[#18181B]">Explanation:</strong> Sau <em>many</em> cần danh từ số nhiều.
-                  </div>
-                </div>
-
+                <p className="text-xs text-[#57534E] leading-relaxed">
+                  Có thắc mắc về ngữ pháp, đề thi hoặc cần nâng cấp câu văn lên {currentDisplayTarget}?
+                </p>
                 <button
                   type="button"
-                  onClick={() => setActiveNav('write')}
-                  className="w-full py-2.5 px-4 rounded-lg bg-[#18181B] hover:bg-[#27272A] text-white text-xs font-bold transition cursor-pointer"
+                  onClick={() => setActiveNav('assistant')}
+                  className="w-full py-2.5 px-4 rounded-lg bg-[#5B3FD9] hover:bg-[#4C32B8] text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  ✍️ Viết & Kiểm tra bài của bạn
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Mở phòng Trợ lý AI ngay</span>
                 </button>
               </div>
 
-              {/* Real Frequent Mistakes Quick Widget */}
+              {/* Quick Vocab Game Banner */}
+              <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#D97706] flex items-center gap-1.5">
+                    <Gamepad2 className="w-4 h-4" />
+                    Game Học Từ Vựng
+                  </span>
+                  <span className="font-mono-code text-[11px] px-2 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] font-semibold">
+                    +XP Thưởng
+                  </span>
+                </div>
+                <p className="text-xs text-[#57534E] leading-relaxed">
+                  Thử thách phản xạ ghép từ C1/C2 và chạy nước rút Collocation tính điểm thời gian thực!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('game')}
+                  className="w-full py-2.5 px-4 rounded-lg bg-[#18181B] hover:bg-[#27272A] text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" />
+                  <span>Vào Đấu trường Từ vựng</span>
+                </button>
+              </div>
+
+              {/* Frequent Mistakes Widget */}
               <div className="bg-white border border-[#E6E1D6] rounded-xl p-5 shadow-2xs space-y-3">
                 <div className="flex items-center gap-2">
                   <Brain className="w-4 h-4 text-[#D97706]" />

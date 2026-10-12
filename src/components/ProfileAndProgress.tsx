@@ -12,8 +12,12 @@ import {
   Check,
   Bell,
   AlertCircle,
+  Calendar,
+  Clock,
+  BookOpen,
 } from 'lucide-react';
 import {
+  LearningMode,
   NotificationItem,
   Post,
   PracticeAttempt,
@@ -33,6 +37,20 @@ interface ProfileViewProps {
   onGoToMistakeDrill: () => void;
 }
 
+const COMMON_TARGETS = {
+  TOEIC: ['TOEIC 750+', 'TOEIC 800+', 'TOEIC 850+', 'TOEIC 900+ (Mục tiêu Xuất sắc)'],
+  IELTS: ['IELTS 6.5', 'IELTS 7.0', 'IELTS 7.5', 'IELTS 8.0 (Mục tiêu Chuyên gia)', 'IELTS 8.5+'],
+};
+
+const ALL_SKILLS = [
+  'Vocabulary (Từ vựng)',
+  'Grammar (Ngữ pháp)',
+  'Reading (Đọc hiểu)',
+  'Listening (Nghe hiểu)',
+  'Writing (Viết luận & Email)',
+  'Speaking (Phát âm & Nói)',
+];
+
 export const ProfileView: React.FC<ProfileViewProps> = ({
   profile,
   userPosts,
@@ -50,6 +68,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [nameInput, setNameInput] = useState(profile?.displayName || '');
   const [bioInput, setBioInput] = useState(profile?.bio || '');
 
+  // Custom Target Form State
+  const [targetMode, setTargetMode] = useState<LearningMode>(
+    profile?.learningMode || 'IELTS'
+  );
+  const [customTargetScore, setCustomTargetScore] = useState(
+    profile?.targetScore || (profile?.learningMode === 'TOEIC' ? 'TOEIC 800+' : 'IELTS 8.0')
+  );
+  const [targetDeadline, setTargetDeadline] = useState(profile?.targetDeadline || '');
+  const [dailyGoalMinutes, setDailyGoalMinutes] = useState<number>(
+    profile?.dailyStudyGoalMinutes || 30
+  );
+  const [focusSkills, setFocusSkills] = useState<string[]>(
+    profile?.targetFocusSkills || ['Grammar (Ngữ pháp)', 'Vocabulary (Từ vựng)']
+  );
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [goalSavedSuccess, setGoalSavedSuccess] = useState(false);
+
   if (!isAuthenticated || !profile) {
     return (
       <div className="max-w-md mx-auto bg-white border border-[#E6E1D6] rounded-xl p-6 md:p-8 shadow-xs space-y-6 my-8">
@@ -61,7 +96,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             Đăng nhập vào EnglishHub AI
           </h1>
           <p className="text-sm text-[#57534E]">
-            Đăng nhập bằng tài khoản thực để đăng bài viết, bình luận, lưu bài viết và theo dõi tiến độ học tập của riêng bạn.
+            Đăng nhập bằng tài khoản thực để thiết lập mục tiêu cá nhân, đăng bài viết, lưu bài viết và theo dõi tiến độ học tập của riêng bạn.
           </p>
         </div>
 
@@ -120,6 +155,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       bio: bioInput.trim(),
     });
     setIsEditingName(false);
+  };
+
+  const handleSaveCustomGoal = async () => {
+    setIsSavingGoal(true);
+    setGoalSavedSuccess(false);
+    try {
+      await onUpdateProfile({
+        learningMode: targetMode,
+        targetScore: customTargetScore.trim() || (targetMode === 'TOEIC' ? 'TOEIC 800+' : 'IELTS 8.0'),
+        targetDeadline,
+        dailyStudyGoalMinutes: dailyGoalMinutes,
+        targetFocusSkills: focusSkills,
+      });
+      setGoalSavedSuccess(true);
+      setTimeout(() => setGoalSavedSuccess(false), 3000);
+    } finally {
+      setIsSavingGoal(false);
+    }
+  };
+
+  const toggleFocusSkill = (skill: string) => {
+    setFocusSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+    );
   };
 
   const totalCorrect = attempts.reduce((acc, a) => acc + a.score, 0);
@@ -183,22 +242,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       setIsEditingName(true);
                     }}
                     className="p-1 rounded hover:bg-[#F3EFEA] text-[#6E6A63] cursor-pointer"
-                    title="Chỉnh sửa hồ sơ"
+                    title="Chỉnh sửa tên và bio"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 {profile.bio && <p className="text-sm text-[#57534E]">{profile.bio}</p>}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span
-                    className={`font-mono-code text-xs font-bold px-2.5 py-0.5 rounded ${
+                  <button
+                    type="button"
+                    onClick={() => setSubTab('target')}
+                    className={`font-mono-code text-xs font-bold px-2.5 py-0.5 rounded cursor-pointer transition flex items-center gap-1 hover:opacity-80 ${
                       profile.learningMode === 'IELTS'
                         ? 'bg-[#F6F4FF] text-[#5B3FD9]'
                         : 'bg-[#F0F5FF] text-[#1E40AF]'
                     }`}
+                    title="Nhấn để tùy chỉnh mục tiêu"
                   >
-                    🎯 Mục tiêu: {profile.targetScore}
-                  </span>
+                    <span>🎯 Mục tiêu: {profile.targetScore}</span>
+                    <Edit3 className="w-3 h-3" />
+                  </button>
                   <span className="font-mono-code text-xs font-bold px-2.5 py-0.5 rounded bg-[#ECFDF5] text-[#059669]">
                     ⚡ {profile.xp} XP
                   </span>
@@ -220,7 +283,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* 4 Sub-tabs: Tiến độ | Bài đã đăng | Điểm luyện tập | Mục tiêu */}
+      {/* 4 Sub-tabs: Tiến độ | Bài đã đăng | Điểm luyện tập | Tự chỉnh sửa Mục tiêu */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[#E6E1D6] pb-3">
         <button
           type="button"
@@ -268,7 +331,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           }`}
         >
           <Target className="w-3.5 h-3.5" />
-          Mục tiêu (TOEIC 800+ / IELTS 8.0)
+          🎯 Chỉnh sửa mục tiêu ({profile.targetScore})
         </button>
       </div>
 
@@ -301,8 +364,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             </div>
 
-            <div className="p-4 rounded-lg bg-[#FAF8F5] border border-[#E6E1D6] text-xs text-[#57534E] leading-relaxed">
-              Số liệu trên được ghi nhận 100% từ các bài viết bạn đã phân tích/đăng tải và các lượt làm bài luyện tập của bạn.
+            {/* Target reminder card */}
+            <div className="p-4 rounded-xl bg-[#FAF8F5] border border-[#E6E1D6] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#18181B]">
+                  Mục tiêu hiện tại:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSubTab('target')}
+                  className="text-xs font-bold text-[#5B3FD9] hover:underline"
+                >
+                  Chỉnh sửa mục tiêu →
+                </button>
+              </div>
+              <div className="text-base font-bold text-[#18181B]">
+                {profile.targetScore}
+              </div>
+              {profile.targetDeadline && (
+                <div className="text-xs text-[#6E6A63] flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Thời hạn / Ngày thi: {profile.targetDeadline}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -426,55 +510,180 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
-      {/* TAB 4: MỤC TIÊU HỌC TẬP */}
+      {/* TAB 4: TỰ CHỈNH SỬA MỤC TIÊU HỌC TẬP (USER CUSTOMIZABLE) */}
       {subTab === 'target' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div
-            onClick={() =>
-              onUpdateProfile({ learningMode: 'TOEIC', targetScore: 'TOEIC 800+' })
-            }
-            className={`p-6 rounded-xl border-2 transition cursor-pointer space-y-3 ${
-              profile.learningMode === 'TOEIC'
-                ? 'bg-[#F0F5FF] border-[#1E40AF]'
-                : 'bg-white border-[#E6E1D6] hover:border-[#1E40AF]'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono-code text-xs font-bold px-2.5 py-1 rounded bg-[#1E40AF] text-white">
-                TOEIC MODE
-              </span>
-              {profile.learningMode === 'TOEIC' && (
-                <span className="text-xs font-bold text-[#1E40AF]">✓ Đang kích hoạt</span>
-              )}
-            </div>
-            <h3 className="text-xl font-bold text-[#18181B]">Mục tiêu TOEIC 800+</h3>
-            <p className="text-sm text-[#57534E]">
-              Tập trung vào Vocabulary thương mại, Grammar Part 5/6, Reading Part 7, Listening Part 3/4 và Mini Test.
+        <div className="bg-white border border-[#E6E1D6] rounded-2xl p-6 md:p-8 space-y-6 shadow-xs">
+          <div className="border-b border-[#E6E1D6] pb-4">
+            <h2 className="text-xl font-bold text-[#18181B] flex items-center gap-2">
+              <Target className="w-5 h-5 text-[#5B3FD9]" />
+              Thiết lập & Tùy chỉnh mục tiêu học tập cá nhân
+            </h2>
+            <p className="text-xs md:text-sm text-[#57534E] mt-1">
+              Bạn có thể tự do chỉnh sửa điểm số mục tiêu, thời hạn và kỹ năng trọng tâm để AI tối ưu lộ trình chấm điểm và bài tập riêng cho bạn.
             </p>
           </div>
 
-          <div
-            onClick={() =>
-              onUpdateProfile({ learningMode: 'IELTS', targetScore: 'IELTS 8.0' })
-            }
-            className={`p-6 rounded-xl border-2 transition cursor-pointer space-y-3 ${
-              profile.learningMode === 'IELTS'
-                ? 'bg-[#F6F4FF] border-[#5B3FD9]'
-                : 'bg-white border-[#E6E1D6] hover:border-[#5B3FD9]'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-mono-code text-xs font-bold px-2.5 py-1 rounded bg-[#5B3FD9] text-white">
-                IELTS MODE
-              </span>
-              {profile.learningMode === 'IELTS' && (
-                <span className="text-xs font-bold text-[#5B3FD9]">✓ Đang kích hoạt</span>
-              )}
+          {goalSavedSuccess && (
+            <div className="p-3.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[#059669] text-xs font-bold flex items-center gap-2">
+              <Check className="w-4 h-4" />
+              <span>Đã lưu thành công mục tiêu học tập mới của bạn!</span>
             </div>
-            <h3 className="text-xl font-bold text-[#18181B]">Mục tiêu IELTS 8.0</h3>
-            <p className="text-sm text-[#57534E]">
-              Tập trung vào 4 kỹ năng Listening, Reading, Writing, Speaking cùng Academic Vocabulary & Complex Grammar chuẩn Band 8.0.
-            </p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Step 1: Chọn Chế độ chính */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63]">
+                1. Chế độ luyện thi
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetMode('TOEIC');
+                    setCustomTargetScore('TOEIC 800+');
+                  }}
+                  className={`p-4 rounded-xl border-2 text-left transition cursor-pointer ${
+                    targetMode === 'TOEIC'
+                      ? 'bg-[#F0F5FF] border-[#1E40AF] text-[#1E40AF]'
+                      : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#57534E] hover:border-[#1E40AF]'
+                  }`}
+                >
+                  <div className="font-bold text-sm">TOEIC Mode</div>
+                  <div className="text-xs opacity-80 mt-1">
+                    Công sở, thương mại, Part 1-7
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetMode('IELTS');
+                    setCustomTargetScore('IELTS 8.0');
+                  }}
+                  className={`p-4 rounded-xl border-2 text-left transition cursor-pointer ${
+                    targetMode === 'IELTS'
+                      ? 'bg-[#F6F4FF] border-[#5B3FD9] text-[#5B3FD9]'
+                      : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#57534E] hover:border-[#5B3FD9]'
+                  }`}
+                >
+                  <div className="font-bold text-sm">IELTS Mode</div>
+                  <div className="text-xs opacity-80 mt-1">
+                    Học thuật, 4 kỹ năng chuẩn quốc tế
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 2: Tự do nhập Điểm mục tiêu */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63]">
+                2. Điểm số mục tiêu cụ thể (Tự chỉnh sửa)
+              </label>
+              <input
+                type="text"
+                value={customTargetScore}
+                onChange={(e) => setCustomTargetScore(e.target.value)}
+                placeholder="Ví dụ: IELTS 8.0, TOEIC 850, TOEIC 900+..."
+                className="w-full px-4 py-3 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5] text-sm font-bold text-[#18181B] focus:outline-none focus:border-[#18181B]"
+              />
+
+              {/* Quick Target Chips */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[11px] text-[#6E6A63] self-center mr-1">
+                  Chọn nhanh:
+                </span>
+                {COMMON_TARGETS[targetMode].map((targetOption) => (
+                  <button
+                    key={targetOption}
+                    type="button"
+                    onClick={() => setCustomTargetScore(targetOption)}
+                    className="text-[11px] px-2.5 py-1 rounded-md border border-[#D6D1C7] bg-white hover:bg-[#F3EFEA] text-[#18181B] font-semibold transition cursor-pointer"
+                  >
+                    {targetOption}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Step 3: Thời hạn mục tiêu / Ngày thi */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63] flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>3. Thời hạn mục tiêu / Ngày thi dự kiến</span>
+              </label>
+              <input
+                type="text"
+                value={targetDeadline}
+                onChange={(e) => setTargetDeadline(e.target.value)}
+                placeholder="Ví dụ: 30/12/2026, hoặc trong vòng 3 tháng tới..."
+                className="w-full px-4 py-3 rounded-xl border border-[#E6E1D6] bg-[#FAF8F5] text-sm text-[#18181B] focus:outline-none focus:border-[#18181B]"
+              />
+            </div>
+
+            {/* Step 4: Thời gian học mỗi ngày */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>4. Thời gian luyện tập mỗi ngày</span>
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[15, 30, 45, 60].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setDailyGoalMinutes(mins)}
+                    className={`py-2.5 px-2 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                      dailyGoalMinutes === mins
+                        ? 'bg-[#18181B] text-white border-[#18181B]'
+                        : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#57534E] hover:text-[#18181B]'
+                    }`}
+                  >
+                    {mins} phút
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Step 5: Kỹ năng trọng tâm */}
+          <div className="space-y-3 pt-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#6E6A63]">
+              5. Kỹ năng bạn muốn tập trung bứt phá nhất
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {ALL_SKILLS.map((skill) => {
+                const isSelected = focusSkills.includes(skill);
+                return (
+                  <button
+                    key={skill}
+                    type="button"
+                    onClick={() => toggleFocusSkill(skill)}
+                    className={`p-3 rounded-xl border text-xs font-bold text-left transition flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#ECFDF5] border-[#059669] text-[#059669]'
+                        : 'bg-[#FAF8F5] border-[#E6E1D6] text-[#57534E] hover:border-[#18181B]'
+                    }`}
+                  >
+                    <span>{skill}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Save Goal Button */}
+          <div className="pt-4 border-t border-[#E6E1D6] flex justify-end">
+            <button
+              type="button"
+              onClick={handleSaveCustomGoal}
+              disabled={isSavingGoal}
+              className="py-3 px-6 rounded-xl bg-[#18181B] hover:bg-[#27272A] text-white font-bold text-sm shadow-sm transition cursor-pointer flex items-center gap-2 disabled:opacity-50"
+            >
+              <Check className="w-4 h-4" />
+              <span>{isSavingGoal ? 'Đang lưu mục tiêu...' : 'Lưu mục tiêu học tập'}</span>
+            </button>
           </div>
         </div>
       )}

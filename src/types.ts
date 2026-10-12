@@ -1,6 +1,14 @@
 export type LearningMode = 'TOEIC' | 'IELTS';
 
-export type NavSection = 'home' | 'write' | 'practice' | 'saved' | 'notifications' | 'profile';
+export type NavSection =
+  | 'home'
+  | 'write'
+  | 'practice'
+  | 'assistant'
+  | 'game'
+  | 'saved'
+  | 'notifications'
+  | 'profile';
 
 export interface AICorrectionItem {
   category: 'Grammar' | 'Vocabulary' | 'Collocation' | 'Structure';
@@ -122,6 +130,9 @@ export interface UserProfile {
   bio: string;
   learningMode: LearningMode;
   targetScore: string;
+  targetDeadline?: string;
+  targetFocusSkills?: string[];
+  dailyStudyGoalMinutes?: number;
   streakDays: number;
   xp: number;
   frequentMistakes: string[];
@@ -138,4 +149,28 @@ export interface NotificationItem {
   message: string;
   read: boolean;
   createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+export interface VocabGamePair {
+  id: string;
+  word: string;
+  meaningVi: string;
+  example: string;
+  type: 'word' | 'meaning';
+}
+
+export interface VocabSprintItem {
+  id: string;
+  sentence: string;
+  missingPart: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
 }
